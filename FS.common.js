@@ -143,7 +143,6 @@ function readFileGeneric(filepath: string, encodingOrOptions:?string, command: F
 
   return command(normalizeFilePath(filepath)).then((b64) => {
     var contents;
-
     if (options.encoding === 'utf8') {
       contents = utf8.decode(base64.decode(b64));
     } else if (options.encoding === 'ascii') {
@@ -513,6 +512,10 @@ var RNFS = {
       mtime && mtime.getTime(),
       ctimeTime
     );
+  },
+
+  getExternalFilesDirs(): Promise<void> {
+    return RNFSManager.getExternalFilesDirs();
   },
 
   MainBundlePath: RNFSManager.RNFSMainBundlePath,

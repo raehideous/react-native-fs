@@ -5,7 +5,9 @@ import android.content.res.AssetManager;
 import android.os.Environment;
 import android.os.StatFs;
 import android.support.annotation.Nullable;
+import android.support.v4.content.ContextCompat;
 import android.util.Base64;
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.facebook.react.bridge.Arguments;
@@ -256,20 +258,41 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void moveFile(String filepath, String destPath, Promise promise) {
+  public void moveFile(String inputPath, String outputPath, Promise promise) {
+    InputStream in = null;
+    OutputStream out = null;
     try {
-      File inFile = new File(filepath);
 
-      if (!inFile.renameTo(new File(destPath))) {
-        copyFile(filepath, destPath);
+      //create output directory if it doesn't exist
+      in = new FileInputStream(inputPath);
+      out = new FileOutputStream(outputPath);
 
-        inFile.delete();
+      byte[] buffer = new byte[1024];
+      int read;
+      while ((read = in.read(buffer)) != -1) {
+        out.write(buffer, 0, read);
       }
+      in.close();
+      in = null;
 
+      // write the output file
+      out.flush();
+      out.close();
+      out = null;
+
+      // delete the original file
+      new File(inputPath).delete();
       promise.resolve(true);
-    } catch (Exception ex) {
-      ex.printStackTrace();
-      reject(promise, filepath, ex);
+
+    }
+
+    catch (FileNotFoundException ex) {
+      Log.e("tag", ex.getMessage());
+      reject(promise, inputPath, ex);
+    }
+    catch (Exception e) {
+      Log.e("tag", e.getMessage());
+      reject(promise, inputPath, e);
     }
   }
 
@@ -365,15 +388,41 @@ public class RNFSManager extends ReactContextBaseJavaModule {
     }
   }
 
+
   @ReactMethod
   public void copyFileAssets(String assetPath, String destination, Promise promise) {
     AssetManager assetManager = getReactApplicationContext().getAssets();
     try {
       InputStream in = assetManager.open(assetPath);
-      copyInputStream(in, assetPath, destination, promise);
+      File outputFile = new File(destination, assetPath);
+      if(outputFile.exists()){
+        promise.resolve(true);
+        return;
+      }
+      OutputStream out = new FileOutputStream(outputFile);
+      copyFile(in, out);
+      in.close();
+      in = null;
+      out.flush();
+      out.close();
+      out = null;
+      Log.d("COPIED?", "YES");
+      promise.resolve(true);
+
     } catch (IOException e) {
+      Log.d("EXCEPTION: ", e.getMessage());
       // Default error message is just asset name, so make a more helpful error here.
-      reject(promise, assetPath, new Exception(String.format("Asset '%s' could not be opened", assetPath)));
+      reject(promise, assetPath, e);
+    }
+  }
+
+
+
+  private void copyFile(InputStream in, OutputStream out) throws IOException {
+    byte[] buffer = new byte[1024];
+    int read;
+    while((read = in.read(buffer)) != -1){
+      out.write(buffer, 0, read);
     }
   }
 
@@ -463,7 +512,10 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   @ReactMethod
   public void stat(String filepath, Promise promise) {
     try {
+
       File file = new File(filepath);
+
+
 
       if (!file.exists()) throw new Exception("File does not exist");
 
@@ -643,6 +695,37 @@ public class RNFSManager extends ReactContextBaseJavaModule {
     info.putDouble("freeSpace", (double)freeSpace);
     promise.resolve(info);
   }
+
+
+
+  //Added by Raehideous
+  @ReactMethod
+  public void getExternalFilesDirs(Promise promise) {
+    try {
+      File[] externalFiles = ContextCompat.getExternalFilesDirs(getReactApplicationContext().getApplicationContext(), null);
+      WritableMap appFilesDirs = Arguments.createMap();
+      WritableArray sdCards = Arguments.createArray();
+
+      if(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+        appFilesDirs.putString("internal", externalFiles[0].getAbsolutePath());
+          if(externalFiles.length > 1) {
+            appFilesDirs.putString("external", externalFiles[1].getAbsolutePath());
+          }
+      } else {
+        appFilesDirs.putString("internal", this.getReactApplicationContext().getFilesDir().getAbsolutePath());
+          if(externalFiles.length > -1) {
+            appFilesDirs.putString("external", externalFiles[0].getAbsolutePath());
+          }
+      }
+      promise.resolve(appFilesDirs);
+
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      promise.reject("ExternalFilesDir", ex.getMessage());
+    }
+  }
+  
+
 
   @ReactMethod
   public void touch(String filepath, double mtime, double ctime, Promise promise) {
